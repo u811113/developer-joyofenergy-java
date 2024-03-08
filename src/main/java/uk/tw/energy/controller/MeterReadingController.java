@@ -1,5 +1,7 @@
 package uk.tw.energy.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,37 +17,54 @@ import uk.tw.energy.service.MeterReadingService;
 import java.util.List;
 import java.util.Optional;
 
-@RestController
 @RequestMapping("/readings")
+
 public class MeterReadingController {
 
     private final MeterReadingService meterReadingService;
+    private final static Logger logger = LoggerFactory.getLogger(MeterReadingController.class);
+
 
     public MeterReadingController(MeterReadingService meterReadingService) {
         this.meterReadingService = meterReadingService;
     }
 
     @PostMapping("/store")
-    public ResponseEntity storeReadings(@RequestBody MeterReadings meterReadings) {
+    public ResponseEntity<String> storeReadings(@RequestBody MeterReadings meterReadings) {
+        String logMessage = "Received meter readings: " + meterReadings;
+        logger.info(logMessage);
         if (!isMeterReadingsValid(meterReadings)) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            logMessage = "Invalid meter readings: " + meterReadings;
+            logger.warn(logMessage);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(logMessage);
         }
         meterReadingService.storeReadings(meterReadings.smartMeterId(), meterReadings.electricityReadings());
-        return ResponseEntity.ok().build();
+        logMessage = "Data logged successfully for meter readings: " + meterReadings;
+        return ResponseEntity.ok().body(logMessage);
     }
 
     private boolean isMeterReadingsValid(MeterReadings meterReadings) {
         String smartMeterId = meterReadings.smartMeterId();
         List<ElectricityReading> electricityReadings = meterReadings.electricityReadings();
-        return smartMeterId != null && !smartMeterId.isEmpty()
+        boolean isValid = smartMeterId != null && !smartMeterId.isEmpty()
                 && electricityReadings != null && !electricityReadings.isEmpty();
+        if (!isValid) {
+            logger.warn("Invalid meter readings: {}", meterReadings);
+        }
+        return isValid;
     }
 
+
     @GetMapping("/read/{smartMeterId}")
-    public ResponseEntity readReadings(@PathVariable String smartMeterId) {
+    public ResponseEntity<?> readReadings(@PathVariable String smartMeterId) {
+        logger.info("Received request to get readings for meter: {}", smartMeterId);
         Optional<List<ElectricityReading>> readings = meterReadingService.getReadings(smartMeterId);
-        return readings.isPresent()
-                ? ResponseEntity.ok(readings.get())
-                : ResponseEntity.notFound().build();
+        if (!readings.isPresent()) {
+            logger.warn("No readings found for meter {}", smartMeterId);
+            return ResponseEntity.notFound().build();
+        }
+        logger.info("Found readings for meter {}: {}", smartMeterId, readings.get());
+        return ResponseEntity.ok(readings.get());
     }
+
 }
